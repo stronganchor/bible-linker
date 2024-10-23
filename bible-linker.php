@@ -2,7 +2,7 @@
 /*
 Plugin Name: Bible Linker
 Description: Automatically finds and hyperlinks Bible references in your posts when published.
-Version: 1.0.0
+Version: 1.0.1
 Author: Strong Anchor Tech
 */
 
@@ -107,29 +107,78 @@ function bible_linker_construct_url($reference, $version, $site) {
 
 // Function to parse references in text and replace them with hyperlinks
 function bible_linker_parse_references($content) {
-    // Define the regex pattern for matching Bible references
-    $book_regex = '\b(?:Genesis|Gen|Exodus|Exod|Ex|Leviticus|Lev|Numbers|Num|Deuteronomy|Deut|Deu|Joshua|Josh|Judges|Judg|Ruth|Ruth|1 Samuel|1 Sam|2 Samuel|2 Sam|1 Kings|1 Kgs|2 Kings|2 Kgs|1 Chronicles|1 Chron|2 Chronicles|2 Chron|Ezra|Ezra|Nehemiah|Neh|Esther|Esth|Job|Job|Psalms|Ps|Proverbs|Prov|Ecclesiastes|Eccl|Song of Solomon|Song|Isaiah|Isa|Jeremiah|Jer|Lamentations|Lam|Ezekiel|Ezek|Daniel|Dan|Hosea|Hos|Joel|Joel|Amos|Amos|Obadiah|Obad|Jonah|Jonah|Micah|Mic|Nahum|Nah|Habakkuk|Hab|Zephaniah|Zeph|Haggai|Hag|Zechariah|Zech|Malachi|Mal|Matthew|Matt|Mark|Mark|Luke|Luke|John|John|Acts|Acts|Romans|Rom|1 Corinthians|1 Cor|2 Corinthians|2 Cor|Galatians|Gal|Ephesians|Eph|Philippians|Phil|Colossians|Col|1 Thessalonians|1 Thess|2 Thessalonians|2 Thess|1 Timothy|1 Tim|2 Timothy|2 Tim|Titus|Titus|Philemon|Philem|Hebrews|Heb|James|James|1 Peter|1 Pet|2 Peter|2 Pet|1 John|1 John|2 John|2 John|3 John|3 John|Jude|Jude|Revelation|Rev)\b';
+    // Use DOMDocument to parse and modify the content
+    $dom = new DOMDocument;
+    libxml_use_internal_errors(true); // Suppress errors due to malformed HTML
+    $dom->loadHTML('<?xml encoding="UTF-8">' . $content, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+    libxml_clear_errors();
 
-    // Regex to match references, e.g., John 3:16, Jn 3:16-17, etc.
-    $regex = '/
-        (?:(1|2|3)\s*)?                 # Optional prefix for 1, 2, 3 John, etc.
-        (' . $book_regex . ')           # Book name
-        \s*                             # Optional whitespace
-        (\d{1,3})                       # Chapter
-        (?::(\d{1,3}(?:-\d{1,3})?))?    # Optional :verse or :verse-verse
-    /ix';
+    $xpath = new DOMXPath($dom);
+
+    // Define the tags we want to exclude (a, h1, h2, h3, h4, h5, h6)
+    $excluded_tags = ['a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+
+    // Build XPath query to select text nodes not within the excluded tags
+    $excluded_tags_query = implode(' and not(ancestor::', array_map(function($tag) {
+        return $tag . ')';
+    }, $excluded_tags));
+    $query = '//text()[not(ancestor::' . $excluded_tags_query . ')]';
+
+    // Process text nodes that are not within the excluded tags
+    foreach ($xpath->query($query) as $textNode) {
+        $parentNode = $textNode->parentNode;
+        $newHTML = bible_linker_replace_references_in_text($textNode->nodeValue);
+        if ($newHTML !== $textNode->nodeValue) {
+            // Create a new fragment and replace the text node
+            $fragment = $dom->createDocumentFragment();
+            @$fragment->appendXML($newHTML);
+            $parentNode->replaceChild($fragment, $textNode);
+        }
+    }
+
+    $content = $dom->saveHTML();
+
+    // Remove the XML encoding declaration
+    $content = preg_replace('/^<\?xml.+?\?>/', '', $content);
+
+    return $content;
+}
+
+function bible_linker_replace_references_in_text($text) {
+    // Define the regex pattern for matching Bible references
+    $book_regex = '\b(?:'
+        . 'Genesis|Gen|Exodus|Exod|Ex|Leviticus|Lev|Numbers|Num|Deuteronomy|Deut|Deu|'
+        . 'Joshua|Josh|Judges|Judg|Ruth|Ruth|'
+        . '1 Samuel|1 Sam|2 Samuel|2 Sam|'
+        . '1 Kings|1 Kgs|2 Kings|2 Kgs|'
+        . '1 Chronicles|1 Chron|2 Chronicles|2 Chron|'
+        . 'Ezra|Ezra|Nehemiah|Neh|Esther|Esth|Job|Job|Psalms|Ps|Proverbs|Prov|'
+        . 'Ecclesiastes|Eccl|Song of Solomon|Song|'
+        . 'Isaiah|Isa|Jeremiah|Jer|Lamentations|Lam|Ezekiel|Ezek|Daniel|Dan|'
+        . 'Hosea|Hos|Joel|Joel|Amos|Amos|Obadiah|Obad|Jonah|Jonah|Micah|Mic|'
+        . 'Nahum|Nah|Habakkuk|Hab|Zephaniah|Zeph|Haggai|Hag|Zechariah|Zech|Malachi|Mal|'
+        . 'Matthew|Matt|Mark|Mark|Luke|Luke|John|John|Acts|Acts|Romans|Rom|'
+        . '1 Corinthians|1 Cor|2 Corinthians|2 Cor|'
+        . 'Galatians|Gal|Ephesians|Eph|Philippians|Phil|Colossians|Col|'
+        . '1 Thessalonians|1 Thess|2 Thessalonians|2 Thess|'
+        . '1 Timothy|1 Tim|2 Timothy|2 Tim|Titus|Titus|Philemon|Philem|Hebrews|Heb|'
+        . 'James|James|1 Peter|1 Pet|2 Peter|2 Pet|'
+        . '1 John|1 John|2 John|2 John|3 John|3 John|Jude|Jude|Revelation|Rev'
+        . ')\b';
+
+    // Regex to match references, e.g., 1 Thessalonians 3:1-13
+    $regex = '/(' . $book_regex . ')\s+(\d{1,3})(?::(\d{1,3}(?:[-–—]\d{1,3})?(?:,\s*\d{1,3}(?:[-–—]\d{1,3})?)*))?/i';
 
     // Use callback to replace matches
-    return preg_replace_callback($regex, 'bible_linker_replace_reference', $content);
+    return preg_replace_callback($regex, 'bible_linker_replace_reference', $text);
 }
 
 function bible_linker_replace_reference($matches) {
-    $book_number = isset($matches[1]) ? $matches[1] . ' ' : '';
-    $book = $matches[2];
-    $chapter = $matches[3];
-    $verse = isset($matches[4]) ? ':' . $matches[4] : '';
+    $book = $matches[1];
+    $chapter = $matches[2];
+    $verse = isset($matches[3]) ? ':' . $matches[3] : '';
 
-    $reference = $book_number . $book . ' ' . $chapter . $verse;
+    $reference = $book . ' ' . $chapter . $verse;
 
     // Get options
     $options = get_option('bible_linker_settings');
@@ -146,7 +195,7 @@ function bible_linker_replace_reference($matches) {
 add_action('save_post', 'bible_linker_save_post', 10, 3);
 
 function bible_linker_save_post($post_ID, $post, $update) {
-    // Only process for 'post' and 'page' post types
+    // Only process for specified post types
     if (!in_array($post->post_type, ['post', 'page', 'sermon', 'sermons', 'podcast', 'podcasts']) || wp_is_post_revision($post_ID)) {
         return;
     }
