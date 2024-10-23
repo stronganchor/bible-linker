@@ -2,7 +2,7 @@
 /*
 Plugin Name: Bible Linker
 Description: Automatically finds and hyperlinks Bible references in your posts when published.
-Version: 1.0.0
+Version: 1.0.1
 Author: Strong Anchor Tech
 */
 
@@ -107,6 +107,24 @@ function bible_linker_construct_url($reference, $version, $site) {
 
 // Function to parse references in text and replace them with hyperlinks
 function bible_linker_parse_references($content) {
+    // Exclude content inside <a> tags and header tags (<h1> to <h6>)
+    $content = preg_replace_callback(
+        '/(<a\s+[^>]*>.*?<\/a>|<h[1-6][^>]*>.*?<\/h[1-6]>|[^<]+)/is',
+        function ($matches) {
+            // If this part is inside <a> or header tags, return it as is
+            if (strpos($matches[0], '<a') === 0 || preg_match('/^<h[1-6][^>]*>/i', $matches[0])) {
+                return $matches[0];
+            } else {
+                // Process the text outside of <a> and header tags
+                return bible_linker_process_text($matches[0]);
+            }
+        },
+        $content
+    );
+    return $content;
+}
+
+function bible_linker_process_text($text) {
     // Define the regex pattern for matching Bible references
     $book_regex = '\b(?:Genesis|Gen|Exodus|Exod|Ex|Leviticus|Lev|Numbers|Num|Deuteronomy|Deut|Deu|Joshua|Josh|Judges|Judg|Ruth|Ruth|1 Samuel|1 Sam|2 Samuel|2 Sam|1 Kings|1 Kgs|2 Kings|2 Kgs|1 Chronicles|1 Chron|2 Chronicles|2 Chron|Ezra|Ezra|Nehemiah|Neh|Esther|Esth|Job|Job|Psalms|Ps|Proverbs|Prov|Ecclesiastes|Eccl|Song of Solomon|Song|Isaiah|Isa|Jeremiah|Jer|Lamentations|Lam|Ezekiel|Ezek|Daniel|Dan|Hosea|Hos|Joel|Joel|Amos|Amos|Obadiah|Obad|Jonah|Jonah|Micah|Mic|Nahum|Nah|Habakkuk|Hab|Zephaniah|Zeph|Haggai|Hag|Zechariah|Zech|Malachi|Mal|Matthew|Matt|Mark|Mark|Luke|Luke|John|John|Acts|Acts|Romans|Rom|1 Corinthians|1 Cor|2 Corinthians|2 Cor|Galatians|Gal|Ephesians|Eph|Philippians|Phil|Colossians|Col|1 Thessalonians|1 Thess|2 Thessalonians|2 Thess|1 Timothy|1 Tim|2 Timothy|2 Tim|Titus|Titus|Philemon|Philem|Hebrews|Heb|James|James|1 Peter|1 Pet|2 Peter|2 Pet|1 John|1 John|2 John|2 John|3 John|3 John|Jude|Jude|Revelation|Rev)\b';
 
@@ -120,7 +138,7 @@ function bible_linker_parse_references($content) {
     /ix';
 
     // Use callback to replace matches
-    return preg_replace_callback($regex, 'bible_linker_replace_reference', $content);
+    return preg_replace_callback($regex, 'bible_linker_replace_reference', $text);
 }
 
 function bible_linker_replace_reference($matches) {
@@ -146,7 +164,7 @@ function bible_linker_replace_reference($matches) {
 add_action('save_post', 'bible_linker_save_post', 10, 3);
 
 function bible_linker_save_post($post_ID, $post, $update) {
-    // Only process for 'post' and 'page' post types
+    // Only process for specified post types
     if (!in_array($post->post_type, ['post', 'page', 'sermon', 'sermons', 'podcast', 'podcasts']) || wp_is_post_revision($post_ID)) {
         return;
     }
