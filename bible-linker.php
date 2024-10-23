@@ -2,7 +2,7 @@
 /*
 Plugin Name: Bible Linker
 Description: Automatically finds and hyperlinks Bible references in your posts when published.
-Version: 1.0.1
+Version: 1.0.2
 Author: Strong Anchor Tech
 */
 
@@ -110,7 +110,11 @@ function bible_linker_parse_references($content) {
     // Use DOMDocument to parse and modify the content
     $dom = new DOMDocument;
     libxml_use_internal_errors(true); // Suppress errors due to malformed HTML
-    $dom->loadHTML('<?xml encoding="UTF-8">' . $content, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+    // Ensure UTF-8 encoding
+    $content = mb_convert_encoding($content, 'HTML-ENTITIES', 'UTF-8');
+
+    $dom->loadHTML('<div>' . $content . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
     libxml_clear_errors();
 
     $xpath = new DOMXPath($dom);
@@ -131,15 +135,22 @@ function bible_linker_parse_references($content) {
         if ($newHTML !== $textNode->nodeValue) {
             // Create a new fragment and replace the text node
             $fragment = $dom->createDocumentFragment();
-            @$fragment->appendXML($newHTML);
+            // Use innerHTML to preserve encoding and avoid empty nodes
+            $tmpDom = new DOMDocument();
+            $tmpDom->loadHTML('<?xml encoding="UTF-8">' . $newHTML, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            foreach ($tmpDom->getElementsByTagName('body')->item(0)->childNodes as $child) {
+                $importedNode = $dom->importNode($child, true);
+                $fragment->appendChild($importedNode);
+            }
             $parentNode->replaceChild($fragment, $textNode);
         }
     }
 
-    $content = $dom->saveHTML();
-
-    // Remove the XML encoding declaration
-    $content = preg_replace('/^<\?xml.+?\?>/', '', $content);
+    // Remove the wrapping div added during loadHTML
+    $content = '';
+    foreach ($dom->documentElement->childNodes as $child) {
+        $content .= $dom->saveHTML($child);
+    }
 
     return $content;
 }
@@ -152,7 +163,7 @@ function bible_linker_replace_references_in_text($text) {
         . '1 Samuel|1 Sam|2 Samuel|2 Sam|'
         . '1 Kings|1 Kgs|2 Kings|2 Kgs|'
         . '1 Chronicles|1 Chron|2 Chronicles|2 Chron|'
-        . 'Ezra|Ezra|Nehemiah|Neh|Esther|Esth|Job|Job|Psalms|Ps|Proverbs|Prov|'
+        . 'Ezra|Ezra|Nehemiah|Neh|Esther|Esth|Job|Job|Psalms|Ps|Psalm|Proverbs|Prov|'
         . 'Ecclesiastes|Eccl|Song of Solomon|Song|'
         . 'Isaiah|Isa|Jeremiah|Jer|Lamentations|Lam|Ezekiel|Ezek|Daniel|Dan|'
         . 'Hosea|Hos|Joel|Joel|Amos|Amos|Obadiah|Obad|Jonah|Jonah|Micah|Mic|'
@@ -167,7 +178,7 @@ function bible_linker_replace_references_in_text($text) {
         . ')\b';
 
     // Regex to match references, e.g., 1 Thessalonians 3:1-13
-    $regex = '/(' . $book_regex . ')\s+(\d{1,3})(?::(\d{1,3}(?:[-–—]\d{1,3})?(?:,\s*\d{1,3}(?:[-–—]\d{1,3})?)*))?/i';
+    $regex = '/\b(' . $book_regex . ')\s+(\d{1,3})(?::\s*(\d{1,3}(?:[-–—]\d{1,3})?(?:,\s*\d{1,3}(?:[-–—]\d{1,3})?)*))?\b/i';
 
     // Use callback to replace matches
     return preg_replace_callback($regex, 'bible_linker_replace_reference', $text);
@@ -176,7 +187,7 @@ function bible_linker_replace_references_in_text($text) {
 function bible_linker_replace_reference($matches) {
     $book = $matches[1];
     $chapter = $matches[2];
-    $verse = isset($matches[3]) ? ':' . $matches[3] : '';
+    $verse = isset($matches[3]) ? ':' . preg_replace('/\s+/', '', $matches[3]) : '';
 
     $reference = $book . ' ' . $chapter . $verse;
 
