@@ -147,7 +147,7 @@ add_action('save_post', 'bible_linker_save_post', 10, 3);
 
 function bible_linker_save_post($post_ID, $post, $update) {
     // Only process for 'post' and 'page' post types
-    if (!in_array($post->post_type, ['post', 'page']) || wp_is_post_revision($post_ID)) {
+    if (!in_array($post->post_type, ['post', 'page', 'sermon', 'sermons', 'podcast', 'podcasts']) || wp_is_post_revision($post_ID)) {
         return;
     }
 
