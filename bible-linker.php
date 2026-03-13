@@ -3,10 +3,62 @@
 Plugin Name: Bible Linker
 Description: Automatically finds and hyperlinks Bible references in your posts when published.
 Version: 1.0.1
+Update URI: https://github.com/stronganchor/bible-linker
 Author: Strong Anchor Tech
 */
 
 if (!defined('ABSPATH')) exit; // Exit if accessed directly
+
+function bible_linker_get_update_branch() {
+    $branch = 'main';
+
+    if ( defined( 'BIBLE_LINKER_UPDATE_BRANCH' ) && is_string( BIBLE_LINKER_UPDATE_BRANCH ) ) {
+        $override = trim( BIBLE_LINKER_UPDATE_BRANCH );
+        if ( '' !== $override ) {
+            $branch = $override;
+        }
+    }
+
+    return (string) apply_filters( 'bible_linker_update_branch', $branch );
+}
+
+function bible_linker_bootstrap_update_checker() {
+    $checker_file = plugin_dir_path( __FILE__ ) . 'plugin-update-checker/plugin-update-checker.php';
+    if ( ! file_exists( $checker_file ) ) {
+        return;
+    }
+
+    require_once $checker_file;
+
+    if ( ! class_exists( '\YahnisElsts\PluginUpdateChecker\v5\PucFactory' ) ) {
+        return;
+    }
+
+    $repo_url = (string) apply_filters( 'bible_linker_update_repository', 'https://github.com/stronganchor/bible-linker' );
+    $slug     = dirname( plugin_basename( __FILE__ ) );
+
+    $update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+        $repo_url,
+        __FILE__,
+        $slug
+    );
+
+    $update_checker->setBranch( bible_linker_get_update_branch() );
+
+    foreach ( array( 'BIBLE_LINKER_GITHUB_TOKEN', 'STRONGANCHOR_GITHUB_TOKEN', 'ANCHOR_GITHUB_TOKEN' ) as $constant_name ) {
+        if ( ! defined( $constant_name ) || ! is_string( constant( $constant_name ) ) ) {
+            continue;
+        }
+
+        $token = trim( (string) constant( $constant_name ) );
+        if ( '' !== $token ) {
+            $update_checker->setAuthentication( $token );
+            break;
+        }
+    }
+}
+
+bible_linker_bootstrap_update_checker();
 
 // Add settings menu
 add_action('admin_menu', 'bible_linker_add_admin_menu');
