@@ -2,7 +2,7 @@
 /*
 Plugin Name: Bible Linker
 Description: Automatically finds and hyperlinks Bible references in your posts when published.
-Version: 1.0.1
+Version: 1.0.2
 Update URI: https://github.com/stronganchor/bible-linker
 Author: Strong Anchor Tech
 */
